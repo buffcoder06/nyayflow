@@ -1,0 +1,333 @@
+'use client';
+
+// src/components/tasks/add-task-dialog.tsx
+
+import { useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { CalendarIcon, Plus } from 'lucide-react';
+import { format } from 'date-fns';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
+import type { Task, Matter } from '@/types';
+import { toast } from 'sonner';
+
+const taskSchema = z.object({
+  title: z.string().min(2, 'Title must be at least 2 characters'),
+  description: z.string().optional(),
+  matterId: z.string().optional(),
+  assignedTo: z.string().min(1, 'Please select a team member'),
+  dueDate: z.date().optional(),
+  priority: z.enum(['high', 'medium', 'low']),
+  notes: z.string().optional(),
+});
+
+type TaskFormValues = z.infer<typeof taskSchema>;
+
+interface AddTaskDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSuccess?: (task: Task) => void;
+  defaultMatterId?: string;
+}
+
+const CURRENT_USER_ID = 'user_1'; // Replace with real auth
+
+export function AddTaskDialog({ open, onOpenChange, onSuccess, defaultMatterId }: AddTaskDialogProps) {
+  const [loading, setLoading] = useState(false);
+  const [matters, setMatters] = useState<Matter[]>([]);
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
+
+  const form = useForm<TaskFormValues>({
+    resolver: zodResolver(taskSchema),
+    defaultValues: {
+      title: '',
+      description: '',
+      matterId: defaultMatterId ?? '',
+      assignedTo: '',
+      priority: 'medium',
+      notes: '',
+    },
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    // Fetch matters and team members
+    Promise.all([
+      api.matters.list(undefined, { page: 1, pageSize: 100 }),
+      api.settings.getTeamMembers(),
+    ]).then(([mattersRes, teamRes]) => {
+      setMatters(mattersRes.data.data);
+      setTeamMembers(teamRes.data.map((u) => ({ id: u.id, name: u.name })));
+    });
+  }, [open]);
+
+  async function onSubmit(values: TaskFormValues) {
+    setLoading(true);
+    try {
+      const selectedMatter = matters.find((m) => m.id === values.matterId);
+      const res = await api.tasks.create({
+        title: values.title,
+        description: values.description,
+        matterId: values.matterId || undefined,
+        matterTitle: selectedMatter?.matterTitle,
+        clientId: selectedMatter?.clientId,
+        assignedTo: values.assignedTo,
+        assignedBy: CURRENT_USER_ID,
+        dueDate: values.dueDate ? format(values.dueDate, 'yyyy-MM-dd') : undefined,
+        priority: values.priority,
+        status: 'pending',
+        notes: values.notes,
+      });
+      toast.success('Task created successfully');
+      onSuccess?.(res.data);
+      form.reset();
+      onOpenChange(false);
+    } catch {
+      toast.error('Failed to create task. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Plus className="h-5 w-5 text-slate-600" />
+            Add New Task
+          </DialogTitle>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {/* Title */}
+            <FormField
+              control={form.control}
+              name="title"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Task Title <span className="text-red-500">*</span></FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g., Prepare written statement" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Description */}
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Brief description of what needs to be done..."
+                      rows={2}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* Matter */}
+              <FormField
+                control={form.control}
+                name="matterId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Matter (Optional)</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select matter" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="max-h-60">
+                        <SelectItem value="">None</SelectItem>
+                        {matters.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.matterTitle}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Assign To */}
+              <FormField
+                control={form.control}
+                name="assignedTo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Assign To <span className="text-red-500">*</span></FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select member" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {teamMembers.map((m) => (
+                          <SelectItem key={m.id} value={m.name}>
+                            {m.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* Due Date */}
+              <FormField
+                control={form.control}
+                name="dueDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Due Date</FormLabel>
+                    <Popover>
+                      <FormControl>
+                        <PopoverTrigger
+                          className={cn(
+                            'flex h-9 w-full items-center justify-start rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs text-left font-normal',
+                            !field.value && 'text-muted-foreground'
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {field.value ? format(field.value, 'dd/MM/yyyy') : 'Pick a date'}
+                        </PopoverTrigger>
+                      </FormControl>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={field.value}
+                          onSelect={field.onChange}
+                          initialFocus
+                          disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Priority */}
+              <FormField
+                control={form.control}
+                name="priority"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Priority <span className="text-red-500">*</span></FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select priority" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="high">
+                          <span className="flex items-center gap-2">
+                            <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
+                            High
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="medium">
+                          <span className="flex items-center gap-2">
+                            <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" />
+                            Medium
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="low">
+                          <span className="flex items-center gap-2">
+                            <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
+                            Low
+                          </span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Notes */}
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Notes (Optional)</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Any additional notes or instructions..."
+                      rows={2}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? 'Saving...' : 'Save Task'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
