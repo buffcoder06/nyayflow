@@ -7,6 +7,7 @@ import { useAppStore } from "@/lib/store/app-store";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
 import MobileNav from "@/components/layout/mobile-nav";
+import TrialBanner from "@/components/shared/trial-banner";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -65,6 +66,8 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [showTrialBanner, setShowTrialBanner] = useState(false);
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const pathname = usePathname();
 
@@ -72,6 +75,22 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   useEffect(() => {
     setMobileSidebarOpen(false);
   }, [pathname]);
+
+  // Check for demo mode and trial status from localStorage
+  useEffect(() => {
+    const demoMode = localStorage.getItem("nyayvakil-demo-mode") === "true";
+    const trialDismissed = localStorage.getItem("nyayvakil-trial-dismissed") === "true";
+    setIsDemoMode(demoMode);
+    // Show trial banner for non-demo sessions (can be tied to actual trial logic later)
+    if (!demoMode && !trialDismissed) {
+      setShowTrialBanner(true);
+    }
+  }, []);
+
+  const handleTrialDismiss = () => {
+    localStorage.setItem("nyayvakil-trial-dismissed", "true");
+    setShowTrialBanner(false);
+  };
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -93,6 +112,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Main Content Area */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        {/* Demo / Trial Banner */}
+        {isDemoMode && <TrialBanner isDemo />}
+        {!isDemoMode && showTrialBanner && (
+          <TrialBanner daysLeft={14} onDismiss={handleTrialDismiss} />
+        )}
+
         {/* Top Header */}
         <Header onMobileMenuOpen={() => setMobileSidebarOpen(true)} />
 

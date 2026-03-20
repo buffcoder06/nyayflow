@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
-import { Eye, EyeOff, Scale, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Scale, Loader2, ArrowLeft, Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -102,9 +102,41 @@ export default function LoginPage() {
     setValue("password", password, { shouldValidate: true });
   };
 
+  const handleDemoLogin = async () => {
+    setIsLoading(true);
+    try {
+      // Auto-login as demo advocate
+      await login("priya.sharma@nyayvakil.in", "demo123");
+      // Mark demo mode in localStorage so the dashboard can show the demo banner
+      if (typeof window !== "undefined") {
+        localStorage.setItem("nyayvakil-demo-mode", "true");
+      }
+      toast.success("Demo workspace loaded!", {
+        description: "Exploring with sample legal practice data.",
+      });
+      router.push("/dashboard");
+    } catch {
+      toast.error("Could not load demo", { description: "Please try again." });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
+    <div className="w-full">
+      {/* Back to website link */}
+      <div className="mb-4">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-[#1e3a5f] transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Back to website
+        </Link>
+      </div>
+
     <Card className="w-full shadow-lg border-0 bg-white">
       <CardHeader className="text-center pb-2">
         {/* Logo */}
@@ -242,7 +274,20 @@ export default function LoginPage() {
         </div>
       </CardContent>
 
-      <CardFooter className="justify-center border-t border-slate-100 py-4">
+      <CardFooter className="flex flex-col gap-3 border-t border-slate-100 py-4">
+        {/* Try Interactive Demo */}
+        <button
+          type="button"
+          onClick={handleDemoLogin}
+          disabled={isLoading}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium transition-colors disabled:opacity-60"
+        >
+          <Play className="w-3.5 h-3.5 fill-white" />
+          Try Interactive Demo
+        </button>
+        <p className="text-xs text-slate-400 text-center">
+          Explore with sample data · No sign-up required
+        </p>
         <p className="text-sm text-slate-500">
           Don&apos;t have an account?{" "}
           <Link
@@ -254,5 +299,6 @@ export default function LoginPage() {
         </p>
       </CardFooter>
     </Card>
+    </div>
   );
 }
